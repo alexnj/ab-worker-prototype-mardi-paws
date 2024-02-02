@@ -2,8 +2,8 @@ export interface Env {}
 
 import { parse } from 'cookie';
 import packageJson from '../package.json';
-import { Experimentation } from '../sdks/npm/lib/index'
-import { applyTransformations } from '../sdks/npm/lib/cf/transformer';
+import { Experimentation } from '../sdks/npm/src/index'
+import { applyTransformations } from '../sdks/npm/src/cf/transformer';
 
 type ABConfigurationAPIResponse = {transformations: Experimentation.Transform[]};
 const identificationString = `${packageJson.name}/${packageJson.version}`;
@@ -30,22 +30,55 @@ export default {
     // Cheap wrangler-cli [l] dev check
     const isLocalDevMode = host.startsWith('localhost') || host.startsWith('127.0.0.1');
     // If no experipment requested, return control.
-    if (!experiment) {
-      const controlResponse = await controlRequest;
-      const mutableResponse = new Response(controlResponse.body, controlResponse);
-      mutableResponse.headers.set('set-cookie', `experiment=${experiment}; Secure; Path=/`);
-      return mutableResponse;
-    }
+    // if (!experiment) {
+    //   const controlResponse = await controlRequest;
+    //   const mutableResponse = new Response(controlResponse.body, controlResponse);
+    //   mutableResponse.headers.set('set-cookie', `experiment=${experiment}; Secure; Path=/`);
+    //   return mutableResponse;
+    // }
     const abConfigurationRequest = fetch(`https://raw.githubusercontent.com/${experiment}`);
     const federatedCalls = new Array<Promise<Response>>(controlRequest, abConfigurationRequest);
     const responses = await Promise.all(federatedCalls);
     const controlResponse = responses[0];
-    const abConfiguration = await responses[1].json() as ABConfigurationAPIResponse;
-    const transformations = abConfiguration.transformations;
+    // const abConfiguration = await responses[1].json() as ABConfigurationAPIResponse;
+    // const transformations = abConfiguration.transformations;
 
-    const mutableResponse = new Response(controlResponse.body, controlResponse);
-    mutableResponse.headers.set('set-cookie', `experiment=${experiment}; Secure; Path=/`);
+    // const mutableResponse = new Response(controlResponse.body, controlResponse);
+    // mutableResponse.headers.set('set-cookie', `experiment=${experiment}; Secure; Path=/`);
+    // return applyTransformations(mutableResponse, transformations);
+    let buffer  // NEW
 
-    return applyTransformations(mutableResponse, transformations);
+    class DomainRewriter {
+      _replace(text) {
+        return text.replaceAll("mardipaws.myshopify.com", "localhost:8787");
+      }
+
+      async element(el) {
+        if (el.hasAttribute('src')) {
+          const oldSrc = el.getAttribute('src');
+          el.setAttribute('src', this._replace(oldSrc));
+        }
+        if (el.hasAttribute('href')) {
+          const oldHref = el.getAttribute('href');
+          el.setAttribute('href', this._replace(oldHref));
+        }
+      }
+
+      text(text) {
+        buffer += text.text
+        if (text.lastInTextNode) {
+          text.replace(this._replace(buffer))
+          buffer = ""
+        } else {
+          text.remove()
+        }
+      }
+    }
+
+  const r = new HTMLRewriter({ html: true })
+        .on("*", new DomainRewriter())
+        .transform(controlResponse)
+
+        return r;
   }
 };

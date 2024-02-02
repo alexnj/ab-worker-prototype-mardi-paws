@@ -1,4 +1,4 @@
-name = "worker-autumn-hat-a47f"
+name = "mardi-paws"
 main = "src/index.ts"
 compatibility_date = "2024-02-01"
 workers_dev = true
